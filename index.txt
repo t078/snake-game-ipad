@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>貪食蛇 iPad 教學版</title>
+    <style>
+        :root { --main-color: #0f0; --bg-color: #000; }
+        * { 
+            box-sizing: border-box; 
+            -webkit-touch-callout: none; /* 禁用長按選單 */
+            -webkit-user-select: none;   /* 禁用文字選取 */
+        }
+
+        body {
+            margin: 0; background-color: var(--bg-color); color: var(--main-color);
+            font-family: '微軟正黑體', -apple-system, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; touch-action: none; /* 徹底禁用瀏覽器手勢 */
+        }
+
+        #settings-trigger {
+            position: absolute; top: 20px; right: 20px; font-size: 20px; 
+            cursor: pointer; z-index: 200; background: #222; border: 1px solid var(--main-color); 
+            color: var(--main-color); padding: 8px 15px; border-radius: 8px;
+        }
+
+        #ui-header { font-size: 28px; margin-bottom: 10px; font-weight: bold; }
+
+        #game-container { 
+            position: relative; border: 3px solid #555; background: #000; line-height: 0; 
+        }
+
+        #pause-btn {
+            position: absolute; bottom: 15px; right: 15px;
+            width: 55px; height: 55px; background: rgba(34, 34, 34, 0.8);
+            border: 2px solid var(--main-color); color: var(--main-color);
+            border-radius: 50%; font-size: 24px; display: flex; align-items: center; justify-content: center;
+            z-index: 50; display: none;
+        }
+
+        canvas { display: block; }
+
+        .overlay {
+            display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+
+        .panel {
+            background: #111; border: 2px solid var(--main-color); padding: 30px;
+            width: 90%; max-width: 400px; text-align: center; border-radius: 20px;
+        }
+
+        .btn-ui {
+            padding: 15px; background: var(--main-color); color: #000; border: none;
+            border-radius: 10px; cursor: pointer; font-weight: bold; margin: 10px 0; font-size: 20px; width: 100%;
+        }
+
+        .speed-btn { background: #222; color: #0f0; border: 1px solid #0f0; }
+        .speed-btn.active { background: #0f0; color: #000; }
+
+        input {
+            width: 100%; padding: 15px; background: #222; border: 1px solid #0f0; 
+            color: #0f0; text-align: center; margin-bottom: 15px; border-radius: 10px; font-size: 20px;
+        }
+
+        #controls { margin-top: 25px; display: grid; grid-template-areas: ". up ." "left . right" ". down ."; gap: 15px; }
+        .btn-dir {
+            width: 80px; height: 80px; background: #1a1a1a; border: 2px solid #444;
+            color: #fff; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+        }
+        #up { grid-area: up; } #left { grid-area: left; } #right { grid-area: right; } #down { grid-area: down; }
+
+        table { width: 100%; color: #fff; border-collapse: collapse; margin-top: 15px; }
+        th { color: var(--main-color); border-bottom: 2px solid var(--main-color); padding: 8px; }
+        td { padding: 8px; border-bottom: 1px solid #222; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <button id="settings-trigger" onclick="openSettings()">⚙️ 設定</button>
+
+    <div id="ui-header">得分: <span id="current-score">0</span></div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <button id="pause-btn" onclick="togglePause()">⏸️</button>
+    </div>
+
+    <div id="start-overlay" class="overlay">
+        <div class="panel">
+            <h1 style="color: #0f0; margin-top:0;">SNAKE IPAD</h1>
+            <p style="color: #aaa;">預設速度：初級 (慢)</p>
+            <button class="btn-ui" onclick="startGame()">開始遊戲</button>
+        </div>
+    </div>
+
+    <div id="settings-overlay" class="overlay" style="display:none;">
+        <div class="panel">
+            <h3>遊戲速度設定</h3>
+            <button class="btn-ui speed-btn active" id="speed-slow" onclick="updateSpeed(200, 'slow')">初級 (慢)</button>
+            <button class="btn-ui speed-btn" id="speed-mid" onclick="updateSpeed(120, 'mid')">中級 (正常)</button>
+            <button class="btn-ui speed-btn" id="speed-fast" onclick="updateSpeed(70, 'fast')">高級 (快)</button>
+            <hr style="border:0; border-top:1px solid #333; margin:20px 0;">
+            <button class="btn-ui" onclick="closeSettings()" style="background:#0f0; color:#000;">關閉並儲存</button>
+        </div>
+    </div>
+
+    <div id="end-overlay" class="overlay" style="display:none;">
+        <div class="panel" id="input-panel">
+            <h2 style="color: #f00;">GAME OVER</h2>
+            <p>最終得分：<span id="final-score">0</span></p>
+            <input type="text" id="player-name" placeholder="輸入玩家暱稱" maxlength="8">
+            <button class="btn-ui" onclick="handleSaveScore()">送出成績</button>
+        </div>
+        <div class="panel" id="leaderboard-panel" style="display:none;">
+            <h3>🏆 前十名排行</h3>
+            <div id="leaderboard-content" style="max-height: 250px; overflow-y: auto;"></div>
+            <button class="btn-ui" onclick="resetGame()" style="margin-top:20px;">再玩一次</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div id="up" class="btn-dir" onclick="changeDirection('up')">↑</div>
+        <div id="left" class="btn-dir" onclick="changeDirection('left')">←</div>
+        <div id="right" class="btn-dir" onclick="changeDirection('right')">→</div>
+        <div id="down" class="btn-dir" onclick="changeDirection('down')">↓</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 針對 iPad 調整格數：iPad 螢幕較大，格數可以多一點點，但必須維持整除
+        const box = 25; 
+        const cols = Math.floor((Math.min(window.innerWidth, window.innerHeight) * 0.8) / box);
+        const rows = cols; 
+        canvas.width = cols * box;
+        canvas.height = rows * box;
+
+        let score = 0;
+        let snake = [];
+        let food = {};
+        let d = "right";
+        let gameInterval = null;
+        let currentSpeed = 200; // 預設初級速度
+        let isGameRunning = false;
+        let hasStartedOnce = false;
+
+        function initGameData() {
+            score = 0;
+            document.getElementById("current-score").innerText = 0;
+            snake = [{x: Math.floor(cols/2) * box, y: Math.floor(rows/2) * box}];
+            d = "right";
+            food = getRandomFood();
+        }
+
+        function getRandomFood() {
+            let newFood;
+            while(true) {
+                newFood = {
+                    x: Math.floor(Math.random() * cols) * box,
+                    y: Math.floor(Math.random() * rows) * box
+                };
+                if (!snake.some(s => s.x === newFood.x && s.y === newFood.y)) break;
+            }
+            return newFood;
+        }
+
+        function draw() {
+            if (!isGameRunning) return;
+
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 背景輔助格線
+            ctx.strokeStyle = "#111";
+            for(let i=0; i<=canvas.width; i+=box) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+            for(let j=0; j<=canvas.height; j+=box) { ctx.beginPath(); ctx.moveTo(0,j); ctx.lineTo(canvas.width,j); ctx.stroke(); }
+
+            snake.forEach((pos, i) => {
+                ctx.fillStyle = (i === 0) ? "#0f0" : "#0a0";
+                ctx.fillRect(pos.x, pos.y, box, box);
+                ctx.strokeStyle = "#000";
+                ctx.strokeRect(pos.x, pos.y, box, box);
+            });
+
+            ctx.fillStyle = "#f00";
+            ctx.fillRect(food.x, food.y, box, box);
+
+            let headX = snake[0].x;
+            let headY = snake[0].y;
+
+            if(d === "left") headX -= box;
+            else if(d === "up") headY -= box;
+            else if(d === "right") headX += box;
+            else if(d === "down") headY += box;
+
+            // 邊界判定
+            if(headX < 0 || headX >= canvas.width || headY < 0 || headY >= canvas.height || 
+               snake.some(s => s.x === headX && s.y === headY)) {
+                gameOver();
+                return;
+            }
+
+            const newHead = {x: headX, y: headY};
+            if(headX === food.x && headY === food.y) {
+                score++;
+                document.getElementById("current-score").innerText = score;
+                food = getRandomFood();
+            } else {
+                snake.pop();
+            }
+            snake.unshift(newHead);
+        }
+
+        function startGame() {
+            hasStartedOnce = true;
+            if (gameInterval) clearInterval(gameInterval);
+            document.getElementById("start-overlay").style.display = "none";
+            document.getElementById("end-overlay").style.display = "none";
+            document.getElementById("pause-btn").style.display = "flex";
+            document.getElementById("pause-btn").innerText = "⏸️";
+            initGameData();
+            isGameRunning = true;
+            gameInterval = setInterval(draw, currentSpeed);
+        }
+
+        function togglePause() {
+            if (!hasStartedOnce) return;
+            if (gameInterval) {
+                clearInterval(gameInterval);
+                gameInterval = null;
+                isGameRunning = false;
+                document.getElementById("pause-btn").innerText = "▶️";
+            } else {
+                isGameRunning = true;
+                gameInterval = setInterval(draw, currentSpeed);
+                document.getElementById("pause-btn").innerText = "⏸️";
+            }
+        }
+
+        function gameOver() {
+            isGameRunning = false;
+            clearInterval(gameInterval);
+            gameInterval = null;
+            document.getElementById("pause-btn").style.display = "none";
+            document.getElementById("final-score").innerText = score;
+            document.getElementById("end-overlay").style.display = "flex";
+        }
+
+        function openSettings() {
+            if (gameInterval) { clearInterval(gameInterval); gameInterval = null; }
+            document.getElementById("settings-overlay").style.display = "flex";
+        }
+
+        function closeSettings() {
+            document.getElementById("settings-overlay").style.display = "none";
+            if (!hasStartedOnce) startGame();
+            else {
+                isGameRunning = true;
+                gameInterval = setInterval(draw, currentSpeed);
+                document.getElementById("pause-btn").style.display = "flex";
+            }
+        }
+
+        function updateSpeed(ms, level) {
+            currentSpeed = ms;
+            document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('speed-' + level).classList.add('active');
+        }
+
+        function changeDirection(newD) {
+            if(newD === "left" && d !== "right") d = "left";
+            else if(newD === "up" && d !== "down") d = "up";
+            else if(newD === "right" && d !== "left") d = "right";
+            else if(newD === "down" && d !== "up") d = "down";
+        }
+
+        function handleSaveScore() {
+            const name = document.getElementById("player-name").value || "匿名玩家";
+            let history = JSON.parse(localStorage.getItem("snakeiPad") || "[]");
+            history.push({name: name, score: score});
+            history.sort((a, b) => b.score - a.score);
+            localStorage.setItem("snakeiPad", JSON.stringify(history.slice(0, 10)));
+            displayLeaderboard(history.slice(0, 10));
+        }
+
+        function displayLeaderboard(data) {
+            let html = "<table><tr><th>名次</th><th>玩家</th><th>得分</th></tr>";
+            data.forEach((item, i) => { html += `<tr><td>${i+1}</td><td>${item.name}</td><td>${item.score}</td></tr>`; });
+            html += "</table>";
+            document.getElementById("leaderboard-content").innerHTML = html;
+            document.getElementById("input-panel").style.display = "none";
+            document.getElementById("leaderboard-panel").style.display = "block";
+        }
+
+        function resetGame() {
+            document.getElementById("end-overlay").style.display = "none";
+            startGame();
+        }
+
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    </script>
+</body>
+</html>
